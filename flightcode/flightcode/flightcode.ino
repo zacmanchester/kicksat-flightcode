@@ -1,18 +1,32 @@
-//#define KICKSAT_DEBUG
+#define KICKSAT_DEBUG 1
 
-
+#include <FlashStorage.h>
 #include <RH_RF22.h>
 #include <ax25.h>
 #include <SdFat.h>
 
-#define LOOP_PERIOD_MS 30000
-bool awake = true;
+#define LOOP_PERIOD_SEC 45
+#define WAIT_LOOPS 60 //Number of loops to wait before turning on the radio
+
+#ifdef KICKSAT_DEBUG
+uint32_t loop_count = 58;
+#else
+uint32_t loop_count = 0;
+#endif
+
+#define KICKSAT_STATUS_ANTENNA          0b0000001
+#define KICKSAT_STATUS_BW_ARMED         0b0000010
+#define KICKSAT_STATUS_BW1_FIRED        0b0000100
+#define KICKSAT_STATUS_BW2_FIRED        0b0001000
+#define KICKSAT_STATUS_BW3_FIRED        0b0010000
+FlashStorage(kicksat_status, uint8_t);
 
 //Radio Stuff
 RHHardwareSPI spi;
 RH_RF22 radio(SPI_CS_RFM, RF_NIRQ, spi);
-uint8_t rxBuffer[32];
-uint8_t rxLen = sizeof(rxBuffer);
+#define RX_BUFFFER_SIZE 255
+uint8_t rxBuffer[RX_BUFFFER_SIZE];
+uint8_t rxLen = RX_BUFFFER_SIZE;
 
 RH_RF22::ModemConfig FSK1k2 = {
   0x2B, //reg_1c
@@ -36,7 +50,7 @@ RH_RF22::ModemConfig FSK1k2 = {
 };
 
 void setup() {
-  
+
   //Watchdog + Loop Timers
   pinMode(WDT_WDI, OUTPUT);
   digitalWrite(WDT_WDI, LOW);
@@ -44,12 +58,12 @@ void setup() {
 
   //LED
   pinMode(LED_BUILTIN, OUTPUT);
-  digitalWrite(LED_BUILTIN, HIGH);
+  digitalWrite(LED_BUILTIN, LOW); //turn the LED on
 
   //Radio (don't put in shutdown mode - consumes lots of current for some weird reason)
   pinMode(RF_SDN, OUTPUT);
   digitalWrite(RF_SDN, LOW);
-  for(int k = 0; k < rxLen; ++k) {
+  for (int k = 0; k < RX_BUFFFER_SIZE; ++k) {
     rxBuffer[k] = 0; //Fill receive buffer with 0s
   }
 
@@ -90,57 +104,203 @@ void setup() {
   //GPS (turned off)
   pinMode(PIN_ENAB_GPS, OUTPUT);
   digitalWrite(PIN_ENAB_GPS, LOW);
-  
-  SPI.begin();
 
-  #ifdef KICKSAT_DEBUG
   SerialUSB.begin(115200);
-  #endif
-
+  SerialUSB.println("KickSat-2 Boot");
+  for(int k = 30; k > 0; --k) {
+    SerialUSB.println(k);
+    delay(1000);
+  }
+  digitalWrite(LED_BUILTIN, HIGH); //turn the LED off
+  
   go_to_sleep();
 }
 
+void main_loop() {
 
-void loop() {
+  ++loop_count; //increment loop counter
+  uint8_t current_status = kicksat_status.read(); //read status from flash
+  
+  #ifdef KICKSAT_DEBUG
+  SerialUSB.print("Main Loop: Count = ");
+  SerialUSB.print(loop_count);
+  SerialUSB.print(" Status = 0x");
+  SerialUSB.println(current_status, HEX);
+  #endif
+
+  if(current_status & KICKSAT_STATUS_ANTENNA) {
+    //Antenna has deployed
+
+    //Turn on radio
+    radio.init();
+    radio.setModeIdle();
+    radio.setModemRegisters(&FSK1k2);
+    radio.setFrequency(437.505, 0.1);
+    radio.setTxPower(RH_RF22_RF23BP_TXPOW_30DBM);
+    
+    //Transmit beacon
+    //radio.send(packet_data, packet_len);
+    radio.waitPacketSent(2000);
+    radio.setModeIdle();
+    
+    //Listen for 15 sec max
+    radio.setModemConfig(radio.FSK_Rb_512Fd2_5);
+    radio.waitAvailableTimeout(15000);
+    if (radio.recv(rxBuffer, &rxLen))
+    {
+      radio.setModeIdle();
+      
+      //Handle received packet
+      if(strcmp((char*)rxBuffer, "PingACK!") == 0) {
+        #ifdef KICKSAT_DEBUG
+        SerialUSB.println("Ping Received");
+        #endif
+      }
+      else if(strcmp((char*)rxBuffer, "ArmBW123") == 0) {
+        #ifdef KICKSAT_DEBUG
+        SerialUSB.println("Arm Received");
+        #endif
+      }
+      else if(strcmp((char*)rxBuffer, "FireBW01") == 0) {
+        #ifdef KICKSAT_DEBUG
+        SerialUSB.println("Fire BW1 Received");
+        #endif
+      }
+      else if(strcmp((char*)rxBuffer, "FireBW02") == 0) {
+        #ifdef KICKSAT_DEBUG
+        SerialUSB.println("Fire BW2 Received");
+        #endif
+      }
+      else if(strcmp((char*)rxBuffer, "FireBW03") == 0) {
+        #ifdef KICKSAT_DEBUG
+        SerialUSB.println("Fire BW3 Received");
+        #endif
+      }
+      else if(strcmp((char*)rxBuffer, "FireBW09") == 0) {
+        #ifdef KICKSAT_DEBUG
+        SerialUSB.println("Fire BW9 Received");
+        #endif
+      }
+      else if(strcmp((char*)rxBuffer, "SenMode1") == 0) {
+        #ifdef KICKSAT_DEBUG
+        SerialUSB.println("Sensor Mode 1 Received");
+        #endif
+      }
+      else if(strcmp((char*)rxBuffer, "SenMode2") == 0) {
+        #ifdef KICKSAT_DEBUG
+        SerialUSB.println("Sensor Mode 2 Received");
+        #endif
+      }
+      else if(strcmp((char*)rxBuffer, "SenMode3") == 0) {
+        #ifdef KICKSAT_DEBUG
+        SerialUSB.println("Sensor Mode 3 Received");
+        #endif
+      }
+      else if(strcmp((char*)rxBuffer, "SenMode4") == 0) {
+        #ifdef KICKSAT_DEBUG
+        SerialUSB.println("Sensor Mode 4 Received");
+        #endif
+      }
+      else if(strcmp((char*)rxBuffer, "SenMode5") == 0) {
+        #ifdef KICKSAT_DEBUG
+        SerialUSB.println("Sensor Mode 5 Received");
+        #endif
+      }
+      else if(strcmp((char*)rxBuffer, "RadMode1") == 0) {
+        #ifdef KICKSAT_DEBUG
+        SerialUSB.println("Radio Mode 1 Received");
+        #endif
+      }
+      else if(strcmp((char*)rxBuffer, "RadMode2") == 0) {
+        #ifdef KICKSAT_DEBUG
+        SerialUSB.println("Radio Mode 2 Received");
+        #endif
+      }
+      else if(strcmp((char*)rxBuffer, "RadMode3") == 0) {
+        #ifdef KICKSAT_DEBUG
+        SerialUSB.println("Radio Mode 3 Received");
+        #endif
+      }
+      else if(strcmp((char*)rxBuffer, "DataDump") == 0) {
+        #ifdef KICKSAT_DEBUG
+        SerialUSB.println("Data Dump Received");
+        #endif
+      }
+      else if(strcmp((char*)rxBuffer, "NormMode") == 0) {
+        #ifdef KICKSAT_DEBUG
+        SerialUSB.println("Normal Mode Received");
+        #endif
+      }
+      else if(strcmp((char*)rxBuffer, "RESET!!!") == 0) {
+        #ifdef KICKSAT_DEBUG
+        SerialUSB.println("Reset Received");
+        #endif
+      }
+
+      //Clear RX Buffer and reset length field
+      for (int k = 0; k < RX_BUFFFER_SIZE; ++k) {
+        rxBuffer[k] = 0; //Fill receive buffer with 0s
+      }
+      rxLen = RX_BUFFFER_SIZE;
+    }
+  }
+  else if(loop_count > WAIT_LOOPS) {
+    //deploy antennas
+
+    #ifdef KICKSAT_DEBUG
+    //Don't really deploy the antenna
+    SerialUSB.println("Deploying Antenna");
+    #else
+    
+    //actually deploy the antenna
+    
+    #endif
+
+    //Write status byte
+    kicksat_status.write(current_status | KICKSAT_STATUS_ANTENNA);
+  }
   
 }
+
+void loop() {}
 
 void go_to_sleep() {
   SYSCTRL->VREG.bit.RUNSTDBY = 1; //Make sure the voltage regulator stays on while asleep
   SCB->SCR |= SCB_SCR_SLEEPONEXIT_Msk; //Enable sleep on exit from interrupts
+  
+  #ifdef KICKSAT_DEBUG
+  PM->SLEEP.reg |= 0;  // Enable Idle0 mode - sleep CPU clock only so we can still keep USB alive for debugging
+  #else
   SCB->SCR |= SCB_SCR_SLEEPDEEP_Msk;   //Enable deep sleep mode
-  //PM->SLEEP.reg |= 2;  // Enable Idle1 mode - sleep CPU clock only
+  #endif
+  
   __DSB();
   __WFI();
-
 }
 
-void TC4_Handler() {     
+void TC4_Handler() {
   // Check for overflow (OVF) interrupt
-  if (TC4->COUNT16.INTFLAG.bit.OVF && TC4->COUNT16.INTENSET.bit.OVF)             
+  if (TC4->COUNT16.INTFLAG.bit.OVF && TC4->COUNT16.INTENSET.bit.OVF)
   {
     //Toggle the watchdog
     digitalWrite(WDT_WDI, HIGH);
     delayMicroseconds(2);
     digitalWrite(WDT_WDI, LOW);
-    TC4->COUNT16.INTFLAG.bit.OVF = 1;              // Clear the OVF interrupt flag
+    TC4->COUNT16.INTFLAG.bit.OVF = 1; // Clear the OVF interrupt flag
   }
 }
 
-void TC5_Handler() {     
+void TC5_Handler() {
   // Check for overflow (OVF) interrupt
-  if (TC5->COUNT16.INTFLAG.bit.OVF && TC5->COUNT16.INTENSET.bit.OVF)             
+  if (TC5->COUNT16.INTFLAG.bit.OVF && TC5->COUNT16.INTENSET.bit.OVF)
   {
-    //Do other stuff...
-    digitalWrite(LED_BUILTIN, LOW);
-    delay(3000);
-    digitalWrite(LED_BUILTIN, HIGH);
-    TC5->COUNT16.INTFLAG.bit.OVF = 1;              // Clear the OVF interrupt flag
+    main_loop();
+    TC5->COUNT16.INTFLAG.bit.OVF = 1; // Clear the OVF interrupt flag
   }
 }
 
 void timer_setup() {
-  
+
   // Set up the generic clock (GCLK4) used to clock timers
   GCLK->GENDIV.reg = GCLK_GENDIV_DIV(2) |          // Divide the 32.768KHz clock source by 2
                      GCLK_GENDIV_ID(4);            // Select Generic Clock (GCLK) 4
@@ -169,7 +329,7 @@ void timer_setup() {
 
   TC4->COUNT16.INTFLAG.bit.OVF = 1;                        // Clear the interrupt flags
   TC4->COUNT16.INTENSET.bit.OVF = 1;                       // Enable TC4 interrupts
- 
+
   TC4->COUNT16.CTRLA.reg |= TC_CTRLA_PRESCALER_DIV16 |     // Set prescaler to 16 to give 1.024kHz
                             TC_CTRLA_WAVEGEN_MFRQ |        // Put the timer TC4 into match frequency (MFRQ) mode
                             TC_CTRLA_RUNSTDBY |            // Run in standby mode
@@ -177,8 +337,8 @@ void timer_setup() {
   while (TC4->COUNT16.STATUS.bit.SYNCBUSY);                // Wait for synchronization
 
 
-  //Setup loop timer 
-  TC5->COUNT16.CC[0].reg = 0x2800; // 30 = 0x7800, 45 = 0xB400, 60 = 0xF000; // Set the TC5 CC0 register to give a 10 second count-down
+  //Setup loop timer
+  TC5->COUNT16.CC[0].reg = 0xB400; //10=0x2800 30 = 0x7800, 45 = 0xB400, 60 = 0xF000; // Set the TC5 CC0 register to give a 10 second count-down
   while (TC5->COUNT16.STATUS.bit.SYNCBUSY);        // Wait for synchronization
 
   NVIC_SetPriority(TC5_IRQn, 3);    // Set the Nested Vector Interrupt Controller (NVIC) priority for TC5 to 3 (lowest so it is preempted by watchdog)
@@ -186,7 +346,7 @@ void timer_setup() {
 
   TC5->COUNT16.INTFLAG.bit.OVF = 1;                        // Clear the interrupt flags
   TC5->COUNT16.INTENSET.bit.OVF = 1;                       // Enable TC5 interrupts
- 
+
   TC5->COUNT16.CTRLA.reg |= TC_CTRLA_PRESCALER_DIV16 |     // Set prescaler to 16 to give 1.024kHz
                             TC_CTRLA_WAVEGEN_MFRQ |        // Put the timer TC5 into match frequency (MFRQ) mode
                             TC_CTRLA_RUNSTDBY |            // Run in standby mode
