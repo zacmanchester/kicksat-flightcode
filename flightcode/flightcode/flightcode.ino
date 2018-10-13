@@ -107,7 +107,7 @@ void setup() {
 
   SerialUSB.begin(115200);
   SerialUSB.println("KickSat-2 Boot");
-  for(int k = 30; k > 0; --k) {
+  for(int k = 40; k > 0; --k) {
     SerialUSB.println(k);
     delay(1000);
   }
