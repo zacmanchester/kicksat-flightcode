@@ -203,7 +203,7 @@ void main_loop() {
     for (int k = 0; k < TX_MESSAGE_SIZE; ++k) {
       txMessage[k] = 0; //Fill transmit buffer with 0s
     }
-    sprintf(txMessage, "Vbat=%03d Ibat=%03d Ichg=%03d Stat=%02x Dat={", vbat, ibat, ichg, current_status);
+    sprintf(txMessage, "LC=%05d Vbat=%03d Ibat=%03d Ichg=%03d Stat=%02x Dat={", loop_count, vbat, ibat, ichg, current_status);
     //Add sensor data
     txLen = strlen(txMessage);
     if ((txLen + SENSOR_LEN_BYTE) < TX_MESSAGE_SIZE){
