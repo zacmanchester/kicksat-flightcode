@@ -73,8 +73,7 @@ void setup() {
 
   //Radio (don't put in shutdown mode - consumes lots of current for some weird reason)pinMode(SPI_CS_RF, OUTPUT);
   pinMode(RF_SDN, OUTPUT);
-  digitalWrite(RF_SDN, HIGH);
-  
+  digitalWrite(RF_SDN, LOW);
   for (int k = 0; k < RX_BUFFER_SIZE; ++k) {
     rxBuffer[k] = 0; //Fill receive buffer with 0s
   }
