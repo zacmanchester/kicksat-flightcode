@@ -435,6 +435,26 @@ void main_loop() {
         #ifdef KICKSAT_DEBUG
         SerialUSB.println("Data Dump Received");
         #endif
+
+        radio.setModemConfig(radio.FSK_Rb38_4Fd19_6);
+        //Format beacon packet
+        for (int k = 0; k < TX_MESSAGE_SIZE; ++k) {
+          txMessage[k] = 0; //Fill transmit buffer with 0s
+        }
+        int num_chunks = 0; //TODO: calculate this...
+        int current_chunk = 0;
+        unsigned int start_time = millis();
+        while((current_chunk < num_chunks) && (millis()-start_time < 20000))
+        {
+          sprintf(txMessage, "Dat%04d={", current_chunk);
+          txLen = 9;
+
+          //TODO: fill in txMessage with data from SD card
+
+          radio.send((uint8_t*)txMessage, txLen);
+        }
+        radio.setModeIdle();
+        
       }
       else if(strcmp(rxBuffer, "NormMode") == 0) {
         #ifdef KICKSAT_DEBUG
