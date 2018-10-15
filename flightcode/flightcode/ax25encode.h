@@ -31,7 +31,7 @@ boolean logicXOR(boolean a, boolean b);
 unsigned int MSB_LSB_swap_16bit(unsigned int v);
 byte MSB_LSB_swap_8bit(byte v);
 
-int ax25encode(char* message)
+int ax25encode(char* message, int message_len)
 {  
   //Array Initialization
   Index = 0;
@@ -44,7 +44,7 @@ int ax25encode(char* message)
   AddHeader(bitSequence);
       
   //Add Message
-  for (int i=0; i < strlen(message) ; i++) bitSequence[Index++] = message[i];
+  for (int i=0; i < message_len ; i++) bitSequence[Index++] = message[i];
      
   //Convert bit sequence from MSB to LSB
   for (int i=0; i < Index ; i++) bitSequence[i] = MSB_LSB_swap_8bit(bitSequence[i]);

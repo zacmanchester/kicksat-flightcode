@@ -6,6 +6,8 @@
 #include <BattHandler.h>
 #include <burn.h>
 #include "ax25encode.h"
+#include <KickSat_Sensor.h>
+#include <SPI.h>
 
 #define LOOP_PERIOD_SEC 60
 #define WAIT_LOOPS 45 //Number of loops to wait before turning on the radio
@@ -54,6 +56,14 @@ RH_RF22::ModemConfig FSK1k2 = {
   0x01  //reg_72
 };
 
+//Sensor stuff
+union SensorPayload {
+  float sensor_float[SENSOR_LEN_FLOAT];
+  byte sensor_byte[SENSOR_LEN_BYTE];
+} sensor_payload;
+KickSat_Sensor kSensor(XTB_RESET);
+
+SdFat SD;
 BattHandle power;
 burn burnwire;
 
@@ -65,7 +75,7 @@ void setup() {
   timer_setup();
 
   //Battery stuff
-  BattHandle power = BattHandle(); //initializes battery 
+  BattHandle power = BattHandle(); //initializes battery read stuff
 
   //LED
   pinMode(LED_BUILTIN, OUTPUT);
@@ -90,11 +100,14 @@ void setup() {
   digitalWrite(SPI_CS_XTB3, HIGH);
   pinMode(SPI_CS_XTB4, OUTPUT);
   digitalWrite(SPI_CS_XTB4, HIGH);
-
+  SPI.begin();
+  kSensor.initialize(); //sleeps sensors
+  
   //SD Card (Chip Select off)
   pinMode(SPI_CS_SD, OUTPUT);
   digitalWrite(SPI_CS_SD, HIGH);
-
+  SD.begin(SPI_CS_SD);
+  
   //MRAM (Chip Select off)
   pinMode(SPI_CS_MRAM, OUTPUT);
   digitalWrite(SPI_CS_MRAM, HIGH);
@@ -149,18 +162,60 @@ void main_loop() {
     float vbat_f = power.readBattVoltage();
     float ibat_f = power.readBattCurrent();
     float ichg_f = power.readBattChargeCurrent();
-
     //convert to fixed point
     int vbat = round(100*vbat_f);
     int ibat = round(ibat_f);
     int ichg = round(ichg_f);
 
+    //Read sensors
+    #ifdef KICKSAT_DEBUG
+    SerialUSB.println("Reading Sensors...");
+    #endif
+    File datafile;
+    kSensor.operate("xtb1", &sensor_payload.sensor_float[SENSOR1_START]);
+    kSensor.operate("xtb2", &sensor_payload.sensor_float[SENSOR2_START]);
+    kSensor.operate("xtb3", &sensor_payload.sensor_float[SENSOR3_START]);
+    #ifdef KICKSAT_DEBUG
+    SerialUSB.println("Writing data to SD");
+    #endif
+    //write sensor data to SD
+    SD.begin(SPI_CS_SD);
+    datafile = SD.open("xtb1.dat", FILE_WRITE);
+    if (datafile){
+      datafile.write(&sensor_payload.sensor_byte[SENSOR1_START], SENSOR1_BUF_LEN*4);
+      datafile.close();  
+    }
+    datafile = SD.open("xtb2.dat", FILE_WRITE);
+    if (datafile){
+      datafile.write(&sensor_payload.sensor_byte[SENSOR2_START], SENSOR2_BUF_LEN*4);
+      datafile.close();  
+    }
+    datafile = SD.open("xtb3.dat", FILE_WRITE);
+    if (datafile){
+      datafile.write(&sensor_payload.sensor_byte[SENSOR3_START], SENSOR3_BUF_LEN*4);
+      datafile.close();  
+    }
+    #ifdef KICKSAT_DEBUG
+    SerialUSB.println("Done Writing");
+    #endif
+    
     //Format beacon packet
     for (int k = 0; k < TX_MESSAGE_SIZE; ++k) {
       txMessage[k] = 0; //Fill transmit buffer with 0s
     }
     sprintf(txMessage, "Vbat=%03d Ibat=%03d Ichg=%03d Stat=%02x Dat={", vbat, ibat, ichg, current_status);
-    txLen = ax25encode(txMessage);
+    //Add sensor data
+    txLen = strlen(txMessage);
+    if ((txLen + SENSOR_LEN_BYTE) < TX_MESSAGE_SIZE){
+      for (int i=0; i<SENSOR_LEN_BYTE; i++){
+        txMessage[txLen+i] = sensor_payload.sensor_byte[i];
+      }
+      txLen += SENSOR_LEN_BYTE;
+      txMessage[txLen] = '}'; 
+      ++txLen;
+    }
+    
+    txLen = ax25encode(txMessage, txLen);
 
     //Turn on radio
     radio.init();
@@ -183,6 +238,9 @@ void main_loop() {
     radio.setModemConfig(radio.FSK_Rb_512Fd2_5);
     radio.setModeRx();
     delay(15000); //Listen for 15 sec
+    #ifdef KICKSAT_DEBUG
+    SerialUSB.println("Done Listening");
+    #endif
     if (radio.available() > 0)
     {    
       radio.recv((uint8_t*)rxBuffer, &rxLen);
@@ -196,7 +254,7 @@ void main_loop() {
         #ifdef KICKSAT_DEBUG
         SerialUSB.println("Ping Received");
         #endif
-        txLen = ax25encode("ACK: Ping");
+        txLen = ax25encode("ACK: Ping", 9);
         radio.setModemRegisters(&FSK1k2);
         radio.send(finalSequence, txLen);
         radio.waitPacketSent(2000);
@@ -206,7 +264,7 @@ void main_loop() {
         #ifdef KICKSAT_DEBUG
         SerialUSB.println("Arm Received");
         #endif
-        txLen = ax25encode("ACK: Arming");
+        txLen = ax25encode("ACK: Arming", 11);
         radio.setModemRegisters(&FSK1k2);
         radio.send(finalSequence, txLen);
         radio.waitPacketSent(2000);
@@ -225,7 +283,7 @@ void main_loop() {
           //Actually fire
           burnwire.burnSpriteOne();
           #endif
-          txLen = ax25encode("ACK: Fire BW1");
+          txLen = ax25encode("ACK: Fire BW1", 13);
           radio.setModemRegisters(&FSK1k2);
           radio.send(finalSequence, txLen);
           radio.waitPacketSent(2000);
@@ -237,7 +295,7 @@ void main_loop() {
         else
         {
           //Error - not armed
-          txLen = ax25encode("ERROR: Not Armed");
+          txLen = ax25encode("ERROR: Not Armed", 16);
           radio.setModemRegisters(&FSK1k2);
           radio.send(finalSequence, txLen);
           radio.waitPacketSent(2000);
@@ -253,7 +311,7 @@ void main_loop() {
           //Actually fire
           burnwire.burnSpriteTwo();
           #endif
-          txLen = ax25encode("ACK: Fire BW2");
+          txLen = ax25encode("ACK: Fire BW2", 13);
           radio.setModemRegisters(&FSK1k2);
           radio.send(finalSequence, txLen);
           radio.waitPacketSent(2000);
@@ -265,7 +323,7 @@ void main_loop() {
         else
         {
           //Error - not armed
-          txLen = ax25encode("ERROR: Not Armed");
+          txLen = ax25encode("ERROR: Not Armed", 16);
           radio.setModemRegisters(&FSK1k2);
           radio.send(finalSequence, txLen);
           radio.waitPacketSent(2000);
@@ -281,7 +339,7 @@ void main_loop() {
           //Actually fire
           burnwire.burnSpriteThree();
           #endif
-          txLen = ax25encode("ACK: Fire BW3");
+          txLen = ax25encode("ACK: Fire BW3", 13);
           radio.setModemRegisters(&FSK1k2);
           radio.send(finalSequence, txLen);
           radio.waitPacketSent(2000);
@@ -293,7 +351,7 @@ void main_loop() {
         else
         {
           //Error - not armed
-          txLen = ax25encode("ERROR: Not Armed");
+          txLen = ax25encode("ERROR: Not Armed", 16);
           radio.setModemRegisters(&FSK1k2);
           radio.send(finalSequence, txLen);
           radio.waitPacketSent(2000);
@@ -314,7 +372,7 @@ void main_loop() {
           delay(5000);
           burnwire.burnSpriteThree();
           #endif
-          txLen = ax25encode("ACK: Fire BW9");
+          txLen = ax25encode("ACK: Fire BW9", 13);
           radio.setModemRegisters(&FSK1k2);
           radio.send(finalSequence, txLen);
           radio.waitPacketSent(2000);
@@ -326,7 +384,7 @@ void main_loop() {
         else
         {
           //Error - not armed
-          txLen = ax25encode("ERROR: Not Armed");
+          txLen = ax25encode("ERROR: Not Armed", 16);
           radio.setModemRegisters(&FSK1k2);
           radio.send(finalSequence, txLen);
           radio.waitPacketSent(2000);
@@ -387,7 +445,7 @@ void main_loop() {
         #ifdef KICKSAT_DEBUG
         SerialUSB.println("Reset Received");
         #endif
-        txLen = ax25encode("ACK: RESET");
+        txLen = ax25encode("ACK: RESET", 10);
         radio.setModemRegisters(&FSK1k2);
         radio.send(finalSequence, txLen);
         radio.waitPacketSent(2000);
@@ -433,8 +491,8 @@ void go_to_sleep() {
   SCB->SCR |= SCB_SCR_SLEEPONEXIT_Msk; //Enable sleep on exit from interrupts
   
   #ifdef KICKSAT_DEBUG
-  //PM->SLEEP.reg |= 0;  // Enable Idle0 mode - sleep CPU clock only so we can still keep USB alive for debugging
-  SCB->SCR |= SCB_SCR_SLEEPDEEP_Msk;   //Enable deep sleep mode
+  PM->SLEEP.reg |= 0;  // Enable Idle0 mode - sleep CPU clock only so we can still keep USB alive for debugging
+  //SCB->SCR |= SCB_SCR_SLEEPDEEP_Msk;   //Enable deep sleep mode
   #else
   SCB->SCR |= SCB_SCR_SLEEPDEEP_Msk;   //Enable deep sleep mode
   #endif
