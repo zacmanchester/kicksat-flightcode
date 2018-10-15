@@ -2,15 +2,16 @@
 
 #include <FlashStorage.h>
 #include <RH_RF22.h>
-#include <ax25.h>
 #include <SdFat.h>
+#include <BattHandler.h>
 #include <burn.h>
+#include "ax25encode.h"
 
 #define LOOP_PERIOD_SEC 60
 #define WAIT_LOOPS 45 //Number of loops to wait before turning on the radio
 
 #ifdef KICKSAT_DEBUG
-uint32_t loop_count = 43;
+uint32_t loop_count = 44;
 #else
 uint32_t loop_count = 0;
 #endif
@@ -25,12 +26,12 @@ FlashStorage(kicksat_status, uint8_t);
 //Radio Stuff
 RHHardwareSPI spi;
 RH_RF22 radio(SPI_CS_RFM, RF_NIRQ, spi);
+#define TX_MESSAGE_SIZE 255
+char txMessage[TX_MESSAGE_SIZE];
+int txLen = 0;
 #define RX_BUFFER_SIZE 255
-#define TX_BUFFER_SIZE 255
-char txBuffer[TX_BUFFER_SIZE];
 char rxBuffer[RX_BUFFER_SIZE];
 uint8_t rxLen = RX_BUFFER_SIZE;
-uint8_t txLen = TX_BUFFER_SIZE;
 
 RH_RF22::ModemConfig FSK1k2 = {
   0x2B, //reg_1c
@@ -53,6 +54,7 @@ RH_RF22::ModemConfig FSK1k2 = {
   0x01  //reg_72
 };
 
+BattHandle power;
 burn burnwire;
 
 void setup() {
@@ -62,18 +64,22 @@ void setup() {
   digitalWrite(WDT_WDI, LOW);
   timer_setup();
 
+  //Battery stuff
+  BattHandle power = BattHandle(); //initializes battery 
+
   //LED
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, LOW); //turn the LED on
 
-  //Radio (don't put in shutdown mode - consumes lots of current for some weird reason)
+  //Radio (don't put in shutdown mode - consumes lots of current for some weird reason)pinMode(SPI_CS_RF, OUTPUT);
   pinMode(RF_SDN, OUTPUT);
-  digitalWrite(RF_SDN, LOW);
+  digitalWrite(RF_SDN, HIGH);
+  
   for (int k = 0; k < RX_BUFFER_SIZE; ++k) {
     rxBuffer[k] = 0; //Fill receive buffer with 0s
   }
-  for (int k = 0; k < TX_BUFFER_SIZE; ++k) {
-    txBuffer[k] = 0; //Fill transmit buffer with 0s
+  for (int k = 0; k < TX_MESSAGE_SIZE; ++k) {
+    txMessage[k] = 0; //Fill transmit buffer with 0s
   }
 
   //Sensors (Chip Select off)
@@ -140,44 +146,61 @@ void main_loop() {
   if(current_status & KICKSAT_STATUS_ANTENNA) {
     //Antenna has deployed
 
+    //Read power stuff
+    float vbat_f = power.readBattVoltage();
+    float ibat_f = power.readBattCurrent();
+    float ichg_f = power.readBattChargeCurrent();
+
+    //convert to fixed point
+    int vbat = round(100*vbat_f);
+    int ibat = round(ibat_f);
+    int ichg = round(ichg_f);
+
+    //Format beacon packet
+    for (int k = 0; k < TX_MESSAGE_SIZE; ++k) {
+      txMessage[k] = 0; //Fill transmit buffer with 0s
+    }
+    sprintf(txMessage, "Vbat=%03d Ibat=%03d Ichg=%03d Stat=%02x Dat={", vbat, ibat, ichg, current_status);
+    txLen = ax25encode(txMessage);
+
     //Turn on radio
     radio.init();
-    radio.setModeIdle();
     radio.setModemRegisters(&FSK1k2);
     radio.setFrequency(437.505, 0.1);
     radio.setTxPower(RH_RF22_RF23BP_TXPOW_30DBM);
     
     //Transmit beacon
-    sprintf(txBuffer, "Vbat=%03d Ibat=%03d Ichg=%03d Stat=%02x", vbat, ibat, ichg, current_status);
-    txLen = strlen(txBuffer);
     #ifdef KICKSAT_DEBUG
-    SerialUSB.println(txBuffer);
+    SerialUSB.println(txMessage);
+    SerialUSB.println(txLen);
     #endif
-    radio.send(txBuffer, txLen);
+    radio.send(finalSequence, txLen);
     radio.waitPacketSent(2000);
     radio.setModeIdle();
     
     //Listen for 15 sec max
     radio.waitAvailableTimeout(15000);
+    radio.setModeIdle();
     if (radio.recv((uint8_t*)rxBuffer, &rxLen))
-    {
-      radio.setModeIdle();
-      
+    {      
       //Handle received packet
       if(strcmp(rxBuffer, "PingACK!") == 0) {
         #ifdef KICKSAT_DEBUG
         SerialUSB.println("Ping Received");
-        #else
-        //Actually transmit
         #endif
+        txLen = ax25encode("ACK: Ping");
+        radio.send(finalSequence, txLen);
+        radio.waitPacketSent(2000);
+        radio.setModeIdle();
       }
       else if(strcmp(rxBuffer, "ArmBW123") == 0) {
         #ifdef KICKSAT_DEBUG
         SerialUSB.println("Arm Received");
-        #else
-        //Actually transmit
-        
         #endif
+        txLen = ax25encode("ACK: Arming");
+        radio.send(finalSequence, txLen);
+        radio.waitPacketSent(2000);
+        radio.setModeIdle();
 
         //Write arming bit to status
         kicksat_status.write(current_status | KICKSAT_STATUS_BW_ARMED);
@@ -192,6 +215,10 @@ void main_loop() {
           //Actually fire
           burnwire.burnSpriteOne();
           #endif
+          txLen = ax25encode("ACK: Fire BW1");
+          radio.send(finalSequence, txLen);
+          radio.waitPacketSent(2000);
+          radio.setModeIdle();
           
           //Write fire BW1 bit to status
           kicksat_status.write(current_status | KICKSAT_STATUS_BW1_FIRED);          
@@ -199,10 +226,11 @@ void main_loop() {
         else
         {
           //Error - not armed
-          
+          txLen = ax25encode("ERROR: Not Armed");
+          radio.send(finalSequence, txLen);
+          radio.waitPacketSent(2000);
+          radio.setModeIdle();
         }
-
-        
       }
       else if(strcmp(rxBuffer, "FireBW02") == 0) {
         if(current_status & KICKSAT_STATUS_BW_ARMED)
@@ -213,6 +241,10 @@ void main_loop() {
           //Actually fire
           burnwire.burnSpriteTwo();
           #endif
+          txLen = ax25encode("ACK: Fire BW2");
+          radio.send(finalSequence, txLen);
+          radio.waitPacketSent(2000);
+          radio.setModeIdle();
           
           //Write fire BW2 bit to status
           kicksat_status.write(current_status | KICKSAT_STATUS_BW2_FIRED);          
@@ -220,10 +252,11 @@ void main_loop() {
         else
         {
           //Error - not armed
-          
+          txLen = ax25encode("ERROR: Not Armed");
+          radio.send(finalSequence, txLen);
+          radio.waitPacketSent(2000);
+          radio.setModeIdle();
         }
-
-        
       }
       else if(strcmp(rxBuffer, "FireBW03") == 0) {
         if(current_status & KICKSAT_STATUS_BW_ARMED)
@@ -234,6 +267,10 @@ void main_loop() {
           //Actually fire
           burnwire.burnSpriteThree();
           #endif
+          txLen = ax25encode("ACK: Fire BW3");
+          radio.send(finalSequence, txLen);
+          radio.waitPacketSent(2000);
+          radio.setModeIdle();
           
           //Write fire BW3 bit to status
           kicksat_status.write(current_status | KICKSAT_STATUS_BW3_FIRED);          
@@ -241,7 +278,10 @@ void main_loop() {
         else
         {
           //Error - not armed
-          
+          txLen = ax25encode("ERROR: Not Armed");
+          radio.send(finalSequence, txLen);
+          radio.waitPacketSent(2000);
+          radio.setModeIdle();
         }
       }
       else if(strcmp(rxBuffer, "FireBW09") == 0) {
@@ -258,6 +298,10 @@ void main_loop() {
           delay(5000);
           burnwire.burnSpriteThree();
           #endif
+          txLen = ax25encode("ACK: Fire BW9");
+          radio.send(finalSequence, txLen);
+          radio.waitPacketSent(2000);
+          radio.setModeIdle();
           
           //Write fire BW9 bit to status
           kicksat_status.write(current_status | KICKSAT_STATUS_BW1_FIRED | KICKSAT_STATUS_BW2_FIRED | KICKSAT_STATUS_BW3_FIRED);          
@@ -265,7 +309,10 @@ void main_loop() {
         else
         {
           //Error - not armed
-          
+          txLen = ax25encode("ERROR: Not Armed");
+          radio.send(finalSequence, txLen);
+          radio.waitPacketSent(2000);
+          radio.setModeIdle();
         }
         
       }
@@ -323,6 +370,10 @@ void main_loop() {
         #ifdef KICKSAT_DEBUG
         SerialUSB.println("Reset Received");
         #endif
+        txLen = ax25encode("ACK: RESET");
+        radio.send(finalSequence, txLen);
+        radio.waitPacketSent(2000);
+        radio.setModeIdle();
 
         //Clear status
         kicksat_status.write(0x00);
@@ -335,8 +386,10 @@ void main_loop() {
       }
       rxLen = RX_BUFFER_SIZE;
     }
+
+    radio.reset();
   }
-  else if(loop_count > WAIT_LOOPS) {
+  else if(loop_count >= WAIT_LOOPS) {
     //deploy antennas
 
     #ifdef KICKSAT_DEBUG
