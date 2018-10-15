@@ -62,6 +62,7 @@ union SensorPayload {
     byte sensor_byte[PAYLOAD_LEN_BYTE];
   };
 union SensorPayload sensorpayload;
+union SensorPayload sensordebug;
 
 KickSat_Sensor kSensor(XTB_RESET);
 SdFat SD;
@@ -208,63 +209,25 @@ void main_loop() {
       txMessage[k] = 0; //Fill transmit buffer with 0s
     }
     sprintf(txMessage, "Vbat=%03d Ibat=%03d Ichg=%03d Stat=%02x Dat={", vbat, ibat, ichg, current_status);
-    txLen = ax25encode(txMessage);
-    SerialUSB.print("txLen: " ),SerialUSB.println((txLen));
-    SerialUSB.print("strlen(txMEssage): " ),SerialUSB.println(strlen(txMessage));
-    for (int i=0; i<txLen; i++){
-      SerialUSB.print(txMessage[i],HEX);
-    }
-    SerialUSB.println("");
-    SerialUSB.println("");
+    
     //Insert sensor data at end of packet
-    SerialUSB.print("sizeof(txLen): " ),SerialUSB.println(sizeof(txLen));
-    if (txLen + PAYLOAD_LEN_BYTE < TX_MESSAGE_SIZE){
+    if (strlen(txMessage) + PAYLOAD_LEN_BYTE < TX_MESSAGE_SIZE){
       for (int i=0; i<PAYLOAD_LEN_BYTE; i++){
-        txMessage[txLen+i] = sensorpayload.sensor_byte[i];
-      }
-      txLen += PAYLOAD_LEN_BYTE;
-      txMessage[txLen] = '}';
+        txMessage[strlen(txMessage)+i] = sensorpayload.sensor_byte[i];
+      }      
+      txMessage[txLen] = '}'; 
       txLen++;
     }
+    txLen = ax25encode(txMessage);
+
     #ifdef KICKSAT_DEBUG
-    SerialUSB.print("txLen: " ),SerialUSB.println(txLen);
-    SerialUSB.print("sizeof(txLen): " ),SerialUSB.println(sizeof(txLen));
-    SerialUSB.print("PAYLOAD_LEN_BYTE: " ),SerialUSB.println(PAYLOAD_LEN_BYTE);
-    for (int i=0; i<txLen-PAYLOAD_LEN_BYTE; i++){
-      SerialUSB.print(txMessage[i]);
-    }
-//    for (int i=0; i<PAYLOAD_LEN_BYTE; i++){
-//      SerialUSB.print(sensorpayload.sensor_byte[i],HEX);
-//    }
-//    SerialUSB.println(txMessage);
-//    SerialUSB.println(txLen);     
-    //Reading sensor data from SD
-    SerialUSB.println("");
-    SerialUSB.println("");
+    SerialUSB.println(txMessage);
+    SerialUSB.println(txLen); 
     for (int i=0; i<txLen; i++){
       SerialUSB.print(txMessage[i],HEX);
-    }
-    SerialUSB.println("");
-    
-//    SerialUSB.println("Reading from SD...");
-//    datafile = SD.open("xtb3.dat", FILE_READ);
-//    if(datafile ) { //if the file opened, read all its contents
-//      int dataSize = datafile.size();      
-//      byte dataPack[dataSize];
-//      datafile.seek(dataSize-sensor3_BUF_LEN*4);
-//      datafile.read(dataPack, sensor3_BUF_LEN*4);
-//      datafile.close();
-//      for (int i=0; i<sensor3_BUF_LEN*4; i++){
-//        SerialUSB.println(dataPack[i],HEX);
-//      }
-//    } else {
-//      SerialUSB.println("data file error");
-//    }        
+    }    
     #endif 
-
     
-    
-
     //Turn on radio
     radio.init();
     radio.setModemRegisters(&FSK1k2);
@@ -597,21 +560,3 @@ void timer_setup() {
                             TC_CTRLA_ENABLE;               // Enable TC5
   while (TC5->COUNT16.STATUS.bit.SYNCBUSY);                // Wait for synchronization
 }
-
-void sensorDownload(String board, byte* dataBuffer){
-  String boardfile = board+".dat";
-  int dataSize = sizeof(boardfile);
-  File datafile;
-  datafile = SD.open(boardfile, FILE_READ);
-  if(datafile ) { //if the file opened, read all its contents   
-    byte dataPack[RH_RF22_MAX_MESSAGE_LEN];
-    datafile.seek(dataSize - RH_RF22_MAX_MESSAGE_LEN);
-    datafile.read(dataPack, RH_RF22_MAX_MESSAGE_LEN);
-    datafile.close();
-    memcpy(dataBuffer, dataPack, sizeof(dataPack)); 
-  } else {
-    SerialUSB.println("data file error");
-  }      
-}
-
-
