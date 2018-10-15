@@ -436,7 +436,7 @@ void main_loop() {
         SerialUSB.println("Data Dump Received");
         #endif
 
-        radio.setModemConfig(radio.FSK_Rb57_6Fd28_8);
+        radio.setModemConfig(radio.FSK_Rb125Fd125);
         //Format beacon packet
         for (int k = 0; k < TX_MESSAGE_SIZE; ++k) {
           txMessage[k] = 0; //Fill transmit buffer with 0s
@@ -444,13 +444,15 @@ void main_loop() {
         int num_chunks = 0; //TODO: calculate this...
         int current_chunk = 0;
         unsigned int start_time = millis();
-        while((current_chunk < num_chunks) && (millis()-start_time < 20000))
+        while((current_chunk < num_chunks) && (millis()-start_time < 30000))
         {
           sprintf(txMessage, "Dat%04d={", current_chunk);
           txLen = 9;
 
           //TODO: fill in txMessage with data from SD card
 
+          txMessage[txLen] = '}';
+          ++txLen;
           radio.send((uint8_t*)txMessage, txLen);
         }
         radio.setModeIdle();
