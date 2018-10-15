@@ -436,7 +436,7 @@ void main_loop() {
         SerialUSB.println("Data Dump Received");
         #endif
 
-        radio.setModemConfig(radio.FSK_Rb38_4Fd19_6);
+        radio.setModemConfig(radio.FSK_Rb57_6Fd28_8);
         //Format beacon packet
         for (int k = 0; k < TX_MESSAGE_SIZE; ++k) {
           txMessage[k] = 0; //Fill transmit buffer with 0s
