@@ -177,17 +177,27 @@ void main_loop() {
     radio.waitPacketSent(2000);
     radio.setModeIdle();
     
-    //Listen for 15 sec max
-    radio.waitAvailableTimeout(15000);
-    radio.setModeIdle();
-    if (radio.recv((uint8_t*)rxBuffer, &rxLen))
-    {      
+    #ifdef KICKSAT_DEBUG
+    SerialUSB.println("Listening");
+    #endif
+    radio.setModemConfig(radio.FSK_Rb_512Fd2_5);
+    radio.setModeRx();
+    delay(15000); //Listen for 15 sec
+    if (radio.available() > 0)
+    {    
+      radio.recv((uint8_t*)rxBuffer, &rxLen);
+      radio.setModeIdle();
+      
+      #ifdef KICKSAT_DEBUG
+      SerialUSB.println("Received Something");
+      #endif
       //Handle received packet
       if(strcmp(rxBuffer, "PingACK!") == 0) {
         #ifdef KICKSAT_DEBUG
         SerialUSB.println("Ping Received");
         #endif
         txLen = ax25encode("ACK: Ping");
+        radio.setModemRegisters(&FSK1k2);
         radio.send(finalSequence, txLen);
         radio.waitPacketSent(2000);
         radio.setModeIdle();
@@ -197,6 +207,7 @@ void main_loop() {
         SerialUSB.println("Arm Received");
         #endif
         txLen = ax25encode("ACK: Arming");
+        radio.setModemRegisters(&FSK1k2);
         radio.send(finalSequence, txLen);
         radio.waitPacketSent(2000);
         radio.setModeIdle();
@@ -215,6 +226,7 @@ void main_loop() {
           burnwire.burnSpriteOne();
           #endif
           txLen = ax25encode("ACK: Fire BW1");
+          radio.setModemRegisters(&FSK1k2);
           radio.send(finalSequence, txLen);
           radio.waitPacketSent(2000);
           radio.setModeIdle();
@@ -226,6 +238,7 @@ void main_loop() {
         {
           //Error - not armed
           txLen = ax25encode("ERROR: Not Armed");
+          radio.setModemRegisters(&FSK1k2);
           radio.send(finalSequence, txLen);
           radio.waitPacketSent(2000);
           radio.setModeIdle();
@@ -241,6 +254,7 @@ void main_loop() {
           burnwire.burnSpriteTwo();
           #endif
           txLen = ax25encode("ACK: Fire BW2");
+          radio.setModemRegisters(&FSK1k2);
           radio.send(finalSequence, txLen);
           radio.waitPacketSent(2000);
           radio.setModeIdle();
@@ -252,6 +266,7 @@ void main_loop() {
         {
           //Error - not armed
           txLen = ax25encode("ERROR: Not Armed");
+          radio.setModemRegisters(&FSK1k2);
           radio.send(finalSequence, txLen);
           radio.waitPacketSent(2000);
           radio.setModeIdle();
@@ -267,6 +282,7 @@ void main_loop() {
           burnwire.burnSpriteThree();
           #endif
           txLen = ax25encode("ACK: Fire BW3");
+          radio.setModemRegisters(&FSK1k2);
           radio.send(finalSequence, txLen);
           radio.waitPacketSent(2000);
           radio.setModeIdle();
@@ -278,6 +294,7 @@ void main_loop() {
         {
           //Error - not armed
           txLen = ax25encode("ERROR: Not Armed");
+          radio.setModemRegisters(&FSK1k2);
           radio.send(finalSequence, txLen);
           radio.waitPacketSent(2000);
           radio.setModeIdle();
@@ -298,6 +315,7 @@ void main_loop() {
           burnwire.burnSpriteThree();
           #endif
           txLen = ax25encode("ACK: Fire BW9");
+          radio.setModemRegisters(&FSK1k2);
           radio.send(finalSequence, txLen);
           radio.waitPacketSent(2000);
           radio.setModeIdle();
@@ -309,11 +327,11 @@ void main_loop() {
         {
           //Error - not armed
           txLen = ax25encode("ERROR: Not Armed");
+          radio.setModemRegisters(&FSK1k2);
           radio.send(finalSequence, txLen);
           radio.waitPacketSent(2000);
           radio.setModeIdle();
         }
-        
       }
       else if(strcmp(rxBuffer, "SenMode1") == 0) {
         #ifdef KICKSAT_DEBUG
@@ -370,6 +388,7 @@ void main_loop() {
         SerialUSB.println("Reset Received");
         #endif
         txLen = ax25encode("ACK: RESET");
+        radio.setModemRegisters(&FSK1k2);
         radio.send(finalSequence, txLen);
         radio.waitPacketSent(2000);
         radio.setModeIdle();
@@ -414,7 +433,8 @@ void go_to_sleep() {
   SCB->SCR |= SCB_SCR_SLEEPONEXIT_Msk; //Enable sleep on exit from interrupts
   
   #ifdef KICKSAT_DEBUG
-  PM->SLEEP.reg |= 0;  // Enable Idle0 mode - sleep CPU clock only so we can still keep USB alive for debugging
+  //PM->SLEEP.reg |= 0;  // Enable Idle0 mode - sleep CPU clock only so we can still keep USB alive for debugging
+  SCB->SCR |= SCB_SCR_SLEEPDEEP_Msk;   //Enable deep sleep mode
   #else
   SCB->SCR |= SCB_SCR_SLEEPDEEP_Msk;   //Enable deep sleep mode
   #endif
