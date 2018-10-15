@@ -6,6 +6,8 @@
 #include <BattHandler.h>
 #include <burn.h>
 #include "ax25encode.h"
+#include <KickSat_Sensor.h>
+#include <SPI.h> 
 
 #define LOOP_PERIOD_SEC 60
 #define WAIT_LOOPS 45 //Number of loops to wait before turning on the radio
@@ -54,6 +56,15 @@ RH_RF22::ModemConfig FSK1k2 = {
   0x01  //reg_72
 };
 
+//Sensor stuff
+union SensorPayload {
+    float sensor_float[LENGTH_FLOAT];
+    byte sensor_byte[LENGTH_BYTE];
+  };
+union SensorPayload sensorpayload;
+KickSat_Sensor kSensor(XTB_RESET);
+SdFat SD;
+
 BattHandle power;
 burn burnwire;
 
@@ -81,7 +92,7 @@ void setup() {
     txMessage[k] = 0; //Fill transmit buffer with 0s
   }
 
-  //Sensors (Chip Select off)
+  //Sensors (Chip Select off, SPI init)
   pinMode(SPI_CS_XTB1, OUTPUT);
   digitalWrite(SPI_CS_XTB1, HIGH);
   pinMode(SPI_CS_XTB2, OUTPUT);
@@ -91,9 +102,11 @@ void setup() {
   pinMode(SPI_CS_XTB4, OUTPUT);
   digitalWrite(SPI_CS_XTB4, HIGH);
 
+
   //SD Card (Chip Select off)
   pinMode(SPI_CS_SD, OUTPUT);
   digitalWrite(SPI_CS_SD, HIGH);
+  File datafile;
 
   //MRAM (Chip Select off)
   pinMode(SPI_CS_MRAM, OUTPUT);
@@ -126,6 +139,16 @@ void setup() {
     delay(1000);
   }
   digitalWrite(LED_BUILTIN, HIGH); //turn the LED off
+
+  //Initialize sensor things
+  SPI.begin();
+  if(SD.begin(SPI_CS_SD)) { //Initialize SD Card
+    SerialUSB.println("SD initialized");
+  } else {
+    SerialUSB.println("SD not initialized");
+  }
+  kSensor.initialize(); //also sleeps sensors
+
   
   go_to_sleep();
 }
@@ -145,6 +168,30 @@ void main_loop() {
   if(current_status & KICKSAT_STATUS_ANTENNA) {
     //Antenna has deployed
 
+    //Read sensors
+    //TODO - - sensor mode stuff?
+    kSensor.operate("xtb1", &sensorpayload.sensor_float[SENSOR1_START]);
+    kSensor.operate("xtb2", &sensorpayload.sensor_float[SENSOR2_START]);
+    kSensor.operate("xtb3", &sensorpayload.sensor_float[SENSOR3_START]);
+
+    //write sensor data to SD
+    SD.begin(SPI_CS_SD);
+    datafile = SD.open("xtb1.dat", FILE_WRITE);
+    if (datafile){
+      datafile.write(&sensorpayload.sensor_byte[SENSOR1_START], sensor1_BUF_LEN*4);
+      datafile.close();  
+    }
+    datafile = SD.open("xtb2.dat", FILE_WRITE);
+    if (datafile){
+      datafile.write(&sensorpayload.sensor_byte[SENSOR2_START], sensor2_BUF_LEN*4);
+      datafile.close();  
+    }
+    datafile = SD.open("xtb3.dat", FILE_WRITE);
+    if (datafile){
+      datafile.write(&sensorpayload.sensor_byte[SENSOR3_START], sensor3_BUF_LEN*4);
+      datafile.close();  
+    }
+
     //Read power stuff
     float vbat_f = power.readBattVoltage();
     float ibat_f = power.readBattCurrent();
@@ -161,6 +208,20 @@ void main_loop() {
     }
     sprintf(txMessage, "Vbat=%03d Ibat=%03d Ichg=%03d Stat=%02x Dat={", vbat, ibat, ichg, current_status);
     txLen = ax25encode(txMessage);
+    
+    //Insert sensor data at end of packet
+    if (txLen + PAYLOAD_LEN_BYTE < TX_MESSAGE_SIZE){
+      for (int i=0; i<PAYLOAD_LEN_BYTE; i++){
+        txMessage[txLen+i] = sensorpayload.sensor_byte[i];
+      }
+      txLen += PAYLOAD_LEN_BYTE
+      txMessage[txLen] = "}";
+      txLen++;
+    }
+    #ifdef KICKSAT_DEBUG
+    SerialUSB.println(txMessage);
+    SerialUSB.println(txLen);
+    #endif 
 
     //Turn on radio
     radio.init();
@@ -169,10 +230,6 @@ void main_loop() {
     radio.setTxPower(RH_RF22_RF23BP_TXPOW_30DBM);
     
     //Transmit beacon
-    #ifdef KICKSAT_DEBUG
-    SerialUSB.println(txMessage);
-    SerialUSB.println(txLen);
-    #endif
     radio.send(finalSequence, txLen);
     radio.waitPacketSent(2000);
     radio.setModeIdle();
