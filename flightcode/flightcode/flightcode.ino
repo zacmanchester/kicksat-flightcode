@@ -62,6 +62,7 @@ union SensorPayload {
   byte sensor_byte[SENSOR_LEN_BYTE];
 } sensor_payload;
 KickSat_Sensor kSensor(XTB_RESET);
+uint8_t SenMode = 0;
 
 SdFat SD;
 BattHandle power;
@@ -172,9 +173,9 @@ void main_loop() {
     SerialUSB.println("Reading Sensors...");
     #endif
     File datafile;
-    kSensor.operate("xtb1", &sensor_payload.sensor_float[SENSOR1_START]);
-    kSensor.operate("xtb2", &sensor_payload.sensor_float[SENSOR2_START]);
-    kSensor.operate("xtb3", &sensor_payload.sensor_float[SENSOR3_START]);
+    kSensor.operate("xtb1", &sensor_payload.sensor_float[SENSOR1_START], SenMode);
+    kSensor.operate("xtb2", &sensor_payload.sensor_float[SENSOR2_START], SenMode);
+    kSensor.operate("xtb3", &sensor_payload.sensor_float[SENSOR3_START], SenMode);
     #ifdef KICKSAT_DEBUG
     SerialUSB.println("Writing data to SD");
     #endif
@@ -392,26 +393,31 @@ void main_loop() {
         }
       }
       else if(strcmp(rxBuffer, "SenMode1") == 0) {
+        SenMode = 1;
         #ifdef KICKSAT_DEBUG
         SerialUSB.println("Sensor Mode 1 Received");
         #endif
       }
       else if(strcmp(rxBuffer, "SenMode2") == 0) {
+        SenMode = 2;
         #ifdef KICKSAT_DEBUG
         SerialUSB.println("Sensor Mode 2 Received");
         #endif
       }
       else if(strcmp(rxBuffer, "SenMode3") == 0) {
+        SenMode = 3;
         #ifdef KICKSAT_DEBUG
         SerialUSB.println("Sensor Mode 3 Received");
         #endif
       }
       else if(strcmp(rxBuffer, "SenMode4") == 0) {
+        SenMode = 4;
         #ifdef KICKSAT_DEBUG
         SerialUSB.println("Sensor Mode 4 Received");
         #endif
       }
       else if(strcmp(rxBuffer, "SenMode5") == 0) {
+        SenMode = 5;
         #ifdef KICKSAT_DEBUG
         SerialUSB.println("Sensor Mode 5 Received");
         #endif
