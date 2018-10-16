@@ -4,7 +4,7 @@
 #include <RH_RF22.h>
 #include <SdFat.h>
 #include <BattHandler.h>
-#include <burn.h>
+#include "burnwires.h"
 #include "ax25encode.h"
 #include <KickSat_Sensor.h>
 #include <SPI.h>
@@ -65,10 +65,8 @@ KickSat_Sensor kSensor(XTB_RESET);
 
 uint8_t SenMode = 0;
 
-
 SdFat SD;
 BattHandle power;
-burn burnwire;
 
 void setup() {
 
@@ -284,17 +282,48 @@ void main_loop() {
         
         if(current_status & KICKSAT_STATUS_BW_ARMED)
         {
-          #ifdef KICKSAT_DEBUG
-          SerialUSB.println("Fire BW1 Received");
-          #else
-          //Actually fire
-          burnwire.burnSpriteOne();
-          #endif
           txLen = ax25encode("ACK: Fire BW1", 13);
           radio.setModemRegisters(&FSK1k2);
           radio.send(finalSequence, txLen);
           radio.waitPacketSent(2000);
           radio.setModeIdle();
+          
+          #ifdef KICKSAT_DEBUG
+          SerialUSB.println("Fire BW1 Received");
+          IMU.begin();
+          int samp = 0;
+          while(samp < 60) {
+            IMU.readAccel();
+            ax = IMU.calcAccel(IMU.ax);
+            ay = IMU.calcAccel(IMU.ay);
+            az = IMU.calcAccel(IMU.az);
+            acc1[samp++] = ax*ax + ay*ay + az*az;
+            delay(50);
+          }
+          #else
+          //Actually fire
+          burnSpriteOne();
+          #endif
+
+          //Send acceleromter data
+          for (int k = 0; k < TX_MESSAGE_SIZE; ++k) {
+            txMessage[k] = 0; //Fill transmit buffer with 0s
+          }
+          strcpy(txMessage, "acc1={");
+          for(int k = 0; k < 60; ++k) {
+            int d1 = (int)floor(100*acc1[k]);
+            sprintf(&txMessage[6+3*k], "%03d", d1);
+          }
+          txLen = strlen(txMessage);
+          txMessage[txLen++] = '}';
+          txLen = ax25encode(txMessage, txLen);
+          radio.send(finalSequence, txLen);
+          radio.waitPacketSent(2000);
+          radio.setModeIdle();
+
+          #ifdef KICKSAT_DEBUG
+          SerialUSB.println(txMessage);
+          #endif
           
           //Write fire BW1 bit to status
           kicksat_status.write(current_status | KICKSAT_STATUS_BW1_FIRED);          
@@ -314,12 +343,38 @@ void main_loop() {
         {
           #ifdef KICKSAT_DEBUG
           SerialUSB.println("Fire BW2 Received");
+          IMU.begin();
+          int samp = 0;
+          while(samp < 60) {
+            IMU.readAccel();
+            ax = IMU.calcAccel(IMU.ax);
+            ay = IMU.calcAccel(IMU.ay);
+            az = IMU.calcAccel(IMU.az);
+            acc2[samp++] = ax*ax + ay*ay + az*az;
+            delay(50);
+          }
           #else
           //Actually fire
-          burnwire.burnSpriteTwo();
+          burnSpriteTwo();
           #endif
           txLen = ax25encode("ACK: Fire BW2", 13);
           radio.setModemRegisters(&FSK1k2);
+          radio.send(finalSequence, txLen);
+          radio.waitPacketSent(2000);
+          radio.setModeIdle();
+
+          //Send acceleromter data
+          for (int k = 0; k < TX_MESSAGE_SIZE; ++k) {
+            txMessage[k] = 0; //Fill transmit buffer with 0s
+          }
+          strcpy(txMessage, "acc2={");
+          for(int k = 0; k < 60; ++k) {
+            int d1 = (int)floor(100*acc2[k]);
+            sprintf(&txMessage[6+3*k], "%03d", d1);
+          }
+          txLen = strlen(txMessage);
+          txMessage[txLen++] = '}';
+          txLen = ax25encode(txMessage, txLen);
           radio.send(finalSequence, txLen);
           radio.waitPacketSent(2000);
           radio.setModeIdle();
@@ -342,12 +397,38 @@ void main_loop() {
         {
           #ifdef KICKSAT_DEBUG
           SerialUSB.println("Fire BW3 Received");
+          IMU.begin();
+          int samp = 0;
+          while(samp < 60) {
+            IMU.readAccel();
+            ax = IMU.calcAccel(IMU.ax);
+            ay = IMU.calcAccel(IMU.ay);
+            az = IMU.calcAccel(IMU.az);
+            acc3[samp++] = ax*ax + ay*ay + az*az;
+            delay(50);
+          }
           #else
           //Actually fire
-          burnwire.burnSpriteThree();
+          burnSpriteThree();
           #endif
           txLen = ax25encode("ACK: Fire BW3", 13);
           radio.setModemRegisters(&FSK1k2);
+          radio.send(finalSequence, txLen);
+          radio.waitPacketSent(2000);
+          radio.setModeIdle();
+
+          //Send acceleromter data
+          for (int k = 0; k < TX_MESSAGE_SIZE; ++k) {
+            txMessage[k] = 0; //Fill transmit buffer with 0s
+          }
+          strcpy(txMessage, "acc3={");
+          for(int k = 0; k < 60; ++k) {
+            int d1 = (int)floor(100*acc3[k]);
+            sprintf(&txMessage[6+3*k], "%03d", d1);
+          }
+          txLen = strlen(txMessage);
+          txMessage[txLen++] = '}';
+          txLen = ax25encode(txMessage, txLen);
           radio.send(finalSequence, txLen);
           radio.waitPacketSent(2000);
           radio.setModeIdle();
@@ -373,11 +454,11 @@ void main_loop() {
           SerialUSB.println("Fire BW9 Received");
           #else
           //Actually fire
-          burnwire.burnSpriteOne();
+          burnSpriteOne();
           delay(5000);
-          burnwire.burnSpriteTwo();
+          burnSpriteTwo();
           delay(5000);
-          burnwire.burnSpriteThree();
+          burnSpriteThree();
           #endif
           txLen = ax25encode("ACK: Fire BW9", 13);
           radio.setModemRegisters(&FSK1k2);
@@ -569,9 +650,9 @@ void main_loop() {
     SerialUSB.println("Deploying Antenna");
     #else
     //actually deploy the antenna
-    burnwire.burnAntennaOne();
+    burnAntennaOne();
     delay(5000);
-    burnwire.burnAntennaTwo();
+    burnAntennaTwo();
     #endif
 
     //Write status byte
