@@ -459,9 +459,9 @@ void main_loop() {
           #else
           //Actually fire
           burnSpriteOne();
-          delay(5000);
+          delay(1000);
           burnSpriteTwo();
-          delay(5000);
+          delay(1000);
           burnSpriteThree();
           #endif
           txLen = ax25encode("ACK: Fire BW9", 13);

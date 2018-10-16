@@ -123,7 +123,7 @@ void burnSpriteTwo() {
     ax = IMU.calcAccel(IMU.ax);
     ay = IMU.calcAccel(IMU.ay);
     az = IMU.calcAccel(IMU.az);
-    acc2[samp++] = ax*ax + ay*ay + az*az;
+    acc3[samp++] = ax*ax + ay*ay + az*az;
     delay(50);
   }
 }
