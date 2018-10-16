@@ -1,4 +1,4 @@
-#define KICKSAT_DEBUG 1
+//#define KICKSAT_DEBUG 1
 
 #include <FlashStorage.h>
 #include <RH_RF22.h>
@@ -637,6 +637,7 @@ void main_loop() {
         #ifdef KICKSAT_DEBUG
         SerialUSB.println(txLen);
         #endif
+        radio.setModemRegisters(&FSK1k2);
         radio.send(finalSequence, txLen);
         radio.waitPacketSent(2000);
         radio.setModeIdle();
@@ -663,6 +664,7 @@ void main_loop() {
         #ifdef KICKSAT_DEBUG
         SerialUSB.println(txLen);
         #endif
+        radio.setModemRegisters(&FSK1k2);
         radio.send(finalSequence, txLen);
         radio.waitPacketSent(2000);
         radio.setModeIdle();
@@ -688,6 +690,7 @@ void main_loop() {
         #ifdef KICKSAT_DEBUG
         SerialUSB.println(txLen);
         #endif
+        radio.setModemRegisters(&FSK1k2);
         radio.send(finalSequence, txLen);
         radio.waitPacketSent(2000);
         radio.setModeIdle();
