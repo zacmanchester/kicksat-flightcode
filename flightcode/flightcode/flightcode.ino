@@ -8,6 +8,7 @@
 #include "ax25encode.h"
 #include <KickSat_Sensor.h>
 #include <SPI.h>
+#include <base64.hpp>
 
 #define LOOP_PERIOD_SEC 60
 #define WAIT_LOOPS 45 //Number of loops to wait before turning on the radio
@@ -211,14 +212,10 @@ void main_loop() {
 
     //Add sensor data
     txLen = strlen(txMessage);
-    if ((txLen + SENSOR_LEN_BYTE) < TX_MESSAGE_SIZE){
-      for (int i=0; i<SENSOR_LEN_BYTE; i++){
-        txMessage[txLen+i] = sensor_payload.sensor_byte[i];
-      }
-      txLen += SENSOR_LEN_BYTE;
-      txMessage[txLen] = '}'; 
-      ++txLen;
-    }
+    unsigned int sensor_base64_len = encode_base64(sensor_payload.sensor_byte, SENSOR_LEN_BYTE, (uint8_t*)&txMessage[txLen]);
+    txLen += sensor_base64_len;
+    txMessage[txLen] = '}'; 
+    ++txLen;
     
     txLen = ax25encode(txMessage, txLen);
 
