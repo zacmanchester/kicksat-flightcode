@@ -291,13 +291,12 @@ void main_loop() {
           #ifdef KICKSAT_DEBUG
           SerialUSB.println("Fire BW1 Received");
           IMU.begin();
-          int samp = 0;
-          while(samp < 60) {
+          for(int samp = 0; samp < 60; ++samp) {
             IMU.readAccel();
             ax = IMU.calcAccel(IMU.ax);
             ay = IMU.calcAccel(IMU.ay);
             az = IMU.calcAccel(IMU.az);
-            acc1[samp++] = ax*ax + ay*ay + az*az;
+            acc1[samp] = ax*ax + ay*ay + az*az;
             delay(50);
           }
           #else
@@ -309,21 +308,21 @@ void main_loop() {
           for (int k = 0; k < TX_MESSAGE_SIZE; ++k) {
             txMessage[k] = 0; //Fill transmit buffer with 0s
           }
-          strcpy(txMessage, "acc1={");
+          strcpy(txMessage, "a1=");
           for(int k = 0; k < 60; ++k) {
-            int d1 = (int)floor(100*acc1[k]);
-            sprintf(&txMessage[6+3*k], "%03d", d1);
+            int d1 = (int)floor(10.0*acc1[k]);
+            sprintf(&txMessage[3+2*k], "%02d", d1);
           }
-          txLen = strlen(txMessage);
-          txMessage[txLen++] = '}';
-          txLen = ax25encode(txMessage, txLen);
-          radio.send(finalSequence, txLen);
-          radio.waitPacketSent(2000);
-          radio.setModeIdle();
-
           #ifdef KICKSAT_DEBUG
           SerialUSB.println(txMessage);
           #endif
+          txLen = ax25encode(txMessage, 123);
+          #ifdef KICKSAT_DEBUG
+          SerialUSB.println(txLen);
+          #endif
+          radio.send(finalSequence, txLen);
+          radio.waitPacketSent(2000);
+          radio.setModeIdle();
           
           //Write fire BW1 bit to status
           kicksat_status.write(current_status | KICKSAT_STATUS_BW1_FIRED);          
@@ -367,14 +366,18 @@ void main_loop() {
           for (int k = 0; k < TX_MESSAGE_SIZE; ++k) {
             txMessage[k] = 0; //Fill transmit buffer with 0s
           }
-          strcpy(txMessage, "acc2={");
+          strcpy(txMessage, "a2=");
           for(int k = 0; k < 60; ++k) {
-            int d1 = (int)floor(100*acc2[k]);
-            sprintf(&txMessage[6+3*k], "%03d", d1);
+            int d1 = (int)floor(10.0*acc2[k]);
+            sprintf(&txMessage[3+2*k], "%02d", d1);
           }
-          txLen = strlen(txMessage);
-          txMessage[txLen++] = '}';
-          txLen = ax25encode(txMessage, txLen);
+          #ifdef KICKSAT_DEBUG
+          SerialUSB.println(txMessage);
+          #endif
+          txLen = ax25encode(txMessage, 123);
+          #ifdef KICKSAT_DEBUG
+          SerialUSB.println(txLen);
+          #endif
           radio.send(finalSequence, txLen);
           radio.waitPacketSent(2000);
           radio.setModeIdle();
@@ -421,14 +424,18 @@ void main_loop() {
           for (int k = 0; k < TX_MESSAGE_SIZE; ++k) {
             txMessage[k] = 0; //Fill transmit buffer with 0s
           }
-          strcpy(txMessage, "acc3={");
+          strcpy(txMessage, "a3=");
           for(int k = 0; k < 60; ++k) {
-            int d1 = (int)floor(100*acc3[k]);
-            sprintf(&txMessage[6+3*k], "%03d", d1);
+            int d1 = (int)floor(10.0*acc3[k]);
+            sprintf(&txMessage[3+2*k], "%02d", d1);
           }
-          txLen = strlen(txMessage);
-          txMessage[txLen++] = '}';
-          txLen = ax25encode(txMessage, txLen);
+          #ifdef KICKSAT_DEBUG
+          SerialUSB.println(txMessage);
+          #endif
+          txLen = ax25encode(txMessage, 123);
+          #ifdef KICKSAT_DEBUG
+          SerialUSB.println(txLen);
+          #endif
           radio.send(finalSequence, txLen);
           radio.waitPacketSent(2000);
           radio.setModeIdle();
@@ -611,12 +618,82 @@ void main_loop() {
 
         }
         radio.setModeIdle();
+      }
+      else if(strcmp(rxBuffer, "SendACC1") == 0) {
+        #ifdef KICKSAT_DEBUG
+        SerialUSB.println("Sending ACC1 Data");
+        #endif
+
+        //Send acceleromter data
+        for (int k = 0; k < TX_MESSAGE_SIZE; ++k) {
+          txMessage[k] = 0; //Fill transmit buffer with 0s
+        }
+        strcpy(txMessage, "a1=");
+        for(int k = 0; k < 60; ++k) {
+          int d1 = (int)floor(10.0*acc1[k]);
+          sprintf(&txMessage[3+2*k], "%02d", d1);
+        }
+        #ifdef KICKSAT_DEBUG
+        SerialUSB.println(txMessage);
+        #endif
+        txLen = ax25encode(txMessage, 123);
+        #ifdef KICKSAT_DEBUG
+        SerialUSB.println(txLen);
+        #endif
+        radio.send(finalSequence, txLen);
+        radio.waitPacketSent(2000);
+        radio.setModeIdle();
         
       }
-      else if(strcmp(rxBuffer, "NormMode") == 0) {
+      else if(strcmp(rxBuffer, "SendACC2") == 0) {
         #ifdef KICKSAT_DEBUG
-        SerialUSB.println("Normal Mode Received");
+        SerialUSB.println("Sending ACC2 Data");
         #endif
+
+        //Send acceleromter data
+        for (int k = 0; k < TX_MESSAGE_SIZE; ++k) {
+          txMessage[k] = 0; //Fill transmit buffer with 0s
+        }
+        strcpy(txMessage, "a2=");
+        for(int k = 0; k < 60; ++k) {
+          int d1 = (int)floor(10.0*acc2[k]);
+          sprintf(&txMessage[3+2*k], "%02d", d1);
+        }
+        #ifdef KICKSAT_DEBUG
+        SerialUSB.println(txMessage);
+        #endif
+        txLen = ax25encode(txMessage, 123);
+        #ifdef KICKSAT_DEBUG
+        SerialUSB.println(txLen);
+        #endif
+        radio.send(finalSequence, txLen);
+        radio.waitPacketSent(2000);
+        radio.setModeIdle();
+      }
+      else if(strcmp(rxBuffer, "SendACC3") == 0) {
+        #ifdef KICKSAT_DEBUG
+        SerialUSB.println("Sending ACC3 Data");
+        #endif
+
+        //Send acceleromter data
+        for (int k = 0; k < TX_MESSAGE_SIZE; ++k) {
+          txMessage[k] = 0; //Fill transmit buffer with 0s
+        }
+        strcpy(txMessage, "a3=");
+        for(int k = 0; k < 60; ++k) {
+          int d1 = (int)floor(10.0*acc3[k]);
+          sprintf(&txMessage[3+2*k], "%02d", d1);
+        }
+        #ifdef KICKSAT_DEBUG
+        SerialUSB.println(txMessage);
+        #endif
+        txLen = ax25encode(txMessage, 123);
+        #ifdef KICKSAT_DEBUG
+        SerialUSB.println(txLen);
+        #endif
+        radio.send(finalSequence, txLen);
+        radio.waitPacketSent(2000);
+        radio.setModeIdle();
       }
       else if(strcmp(rxBuffer, "RESET!!!") == 0) {
         #ifdef KICKSAT_DEBUG
