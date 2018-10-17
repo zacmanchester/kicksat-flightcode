@@ -2,7 +2,6 @@
 
 #include <FlashStorage.h>
 #include <RH_RF22.h>
-#include <SdFat.h>
 #include <BattHandler.h>
 #include "burnwires.h"
 #include "ax25encode.h"
@@ -66,7 +65,6 @@ KickSat_Sensor kSensor(XTB_RESET);
 
 uint8_t SenMode = 0;
 
-SdFat SD;
 BattHandle power;
 
 void setup() {
@@ -108,7 +106,6 @@ void setup() {
   //SD Card (Chip Select off)
   pinMode(SPI_CS_SD, OUTPUT);
   digitalWrite(SPI_CS_SD, HIGH);
-  SD.begin(SPI_CS_SD);
   
   //MRAM (Chip Select off)
   pinMode(SPI_CS_MRAM, OUTPUT);
@@ -173,35 +170,10 @@ void main_loop() {
     #ifdef KICKSAT_DEBUG
     SerialUSB.println("Reading Sensors...");
     #endif
-    File datafile;
 
     kSensor.operate("xtb1", &sensor_payload.sensor_float[SENSOR1_START], SenMode);
     kSensor.operate("xtb2", &sensor_payload.sensor_float[SENSOR2_START], SenMode);
     kSensor.operate("xtb3", &sensor_payload.sensor_float[SENSOR3_START], SenMode);
-    
-    #ifdef KICKSAT_DEBUG
-    SerialUSB.println("Writing data to SD");
-    #endif
-    //write sensor data to SD
-    SD.begin(SPI_CS_SD);
-    datafile = SD.open("xtb1.dat", FILE_WRITE);
-    if (datafile){
-      datafile.write(&sensor_payload.sensor_byte[SENSOR1_START], SENSOR1_BUF_LEN*4);
-      datafile.close();  
-    }
-    datafile = SD.open("xtb2.dat", FILE_WRITE);
-    if (datafile){
-      datafile.write(&sensor_payload.sensor_byte[SENSOR2_START], SENSOR2_BUF_LEN*4);
-      datafile.close();  
-    }
-    datafile = SD.open("xtb3.dat", FILE_WRITE);
-    if (datafile){
-      datafile.write(&sensor_payload.sensor_byte[SENSOR3_START], SENSOR3_BUF_LEN*4);
-      datafile.close();  
-    }
-    #ifdef KICKSAT_DEBUG
-    SerialUSB.println("Done Writing");
-    #endif
     
     //Format beacon packet
     for (int k = 0; k < TX_MESSAGE_SIZE; ++k) {
@@ -527,94 +499,6 @@ void main_loop() {
         #ifdef KICKSAT_DEBUG
         SerialUSB.println("Radio Mode 3 Received");
         #endif
-      }
-      else if(strcmp(rxBuffer, "DataDump") == 0) {
-        #ifdef KICKSAT_DEBUG
-        SerialUSB.println("Data Dump Received");
-        #endif
-
-        radio.setModeIdle();
-        radio.setModemConfig(radio.FSK_Rb57_6Fd28_8);
-        radio.setFrequency(437.505, 0.1);
-        radio.setTxPower(RH_RF22_RF23BP_TXPOW_30DBM);
-        //Format beacon packet
-        for (int k = 0; k < TX_MESSAGE_SIZE; ++k) {
-          txMessage[k] = 0; //Fill transmit buffer with 0s
-        }
-
-        int num_chunks = kSensor.sensor3_count+kSensor.sensor2_count+kSensor.sensor1_count;
-        int current_chunk = 0;
-        unsigned int start_time = millis();
-        #ifdef KICKSAT_DEBUG
-        SerialUSB.print("Total # of data chunks: "),SerialUSB.println(num_chunks);
-        #endif
-        while((current_chunk < num_chunks) && (millis()-start_time < 30000))
-        {
-          datafile = SD.open("xtb3.bat", FILE_READ);
-          for (int i = 0; i < kSensor.sensor3_count; i++){
-            sprintf(txMessage, "Dat%04d={", current_chunk);
-            txLen = 9;
-            int chunk_size = SENSOR3_BUF_LEN*4*6; //216 bytes
-            if(datafile) { 
-                datafile.seek((kSensor.sensor3_count*SENSOR3_BUF_LEN*4)-(current_chunk*chunk_size));
-                datafile.read(&txMessage[txLen], chunk_size);
-                txLen += chunk_size;
-            }
-            txMessage[txLen] = '}';
-            ++txLen;
-            #ifdef KICKSAT_DEBUG
-            SerialUSB.print("Sent Data Chunk #: "),SerialUSB.println(current_chunk);
-            SerialUSB.println(txLen);
-            SerialUSB.println(txMessage);
-            #endif
-            radio.send((uint8_t*)txMessage, txLen);
-            delay(500);
-            ++current_chunk;
-          }
-          datafile.close();
-          datafile = SD.open("xtb2.bat", FILE_READ);
-          for (int i = 0; i < kSensor.sensor2_count; i++){
-            sprintf(txMessage, "Dat%04d={", current_chunk);
-            txLen = 9;
-            int chunk_size = SENSOR2_BUF_LEN*4*8; //224 bytes
-            if(datafile ) { 
-                datafile.seek((kSensor.sensor2_count*SENSOR2_BUF_LEN*4)-(current_chunk*chunk_size));
-                datafile.read(&txMessage[txLen], chunk_size);
-                txLen += chunk_size;
-            }
-            txMessage[txLen] = '}';
-            ++txLen;
-            radio.send((uint8_t*)txMessage, txLen);
-            delay(500);
-            ++current_chunk;
-            #ifdef KICKSAT_DEBUG
-            SerialUSB.print("Sent Data Chunk #: "),SerialUSB.println(current_chunk);
-            #endif
-          }
-          datafile.close();
-          datafile = SD.open("xtb1.bat", FILE_READ);
-          for (int i = 0; i < kSensor.sensor1_count; i++){
-            sprintf(txMessage, "Dat%04d={", current_chunk);
-            txLen = 9;
-            int chunk_size = SENSOR1_BUF_LEN*4*6; //216 bytes
-            if(datafile ) { 
-                datafile.seek((kSensor.sensor1_count*SENSOR1_BUF_LEN*4)-(current_chunk*chunk_size));
-                datafile.read(&txMessage[txLen], chunk_size);
-                txLen += chunk_size;
-            }
-            txMessage[txLen] = '}';
-            ++txLen;
-            radio.send((uint8_t*)txMessage, txLen);
-            delay(500);
-            ++current_chunk;
-            #ifdef KICKSAT_DEBUG
-            SerialUSB.print("Sent Data Chunk #: "),SerialUSB.println(current_chunk);
-            #endif
-          }
-          datafile.close();
-
-        }
-        radio.setModeIdle();
       }
       else if(strcmp(rxBuffer, "SendACC1") == 0) {
         #ifdef KICKSAT_DEBUG
