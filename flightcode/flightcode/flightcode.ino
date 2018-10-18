@@ -1,4 +1,4 @@
-//#define KICKSAT_DEBUG 1
+#define KICKSAT_DEBUG 1
 
 #include <FlashStorage.h>
 #include <RH_RF22.h>
@@ -102,6 +102,10 @@ void setup() {
   digitalWrite(SPI_CS_XTB4, HIGH);
   SPI.begin();
   kSensor.initialize(); //sleeps sensors
+  for (int k = 0; k < SENSOR_LEN_FLOAT; ++k) {
+    sensor_payload.sensor_float[k] = 0.0; //fill with zeros
+  }
+  
   
   //SD Card (Chip Select off)
   pinMode(SPI_CS_SD, OUTPUT);
@@ -169,11 +173,38 @@ void main_loop() {
     //Read sensors
     #ifdef KICKSAT_DEBUG
     SerialUSB.println("Reading Sensors...");
+    SerialUSB.println(SENSOR_LEN_FLOAT);
+    SerialUSB.println(SENSOR_LEN_BYTE);
     #endif
 
+    #ifdef KICKSAT_DEBUG
+    SerialUSB.println("Sensor Data:");
+    for (int k = 0; k < SENSOR_LEN_FLOAT; ++k) {
+      SerialUSB.println(sensor_payload.sensor_float[k]);
+    }
+    #endif
     kSensor.operate("xtb1", &sensor_payload.sensor_float[SENSOR1_START], SenMode);
-    kSensor.operate("xtb2", &sensor_payload.sensor_float[SENSOR2_START], SenMode);
+    #ifdef KICKSAT_DEBUG
+    SerialUSB.println("Sensor Data 1:");
+    for (int k = 0; k < SENSOR_LEN_FLOAT; ++k) {
+      SerialUSB.println(sensor_payload.sensor_float[k]);
+    }
+    #endif
+    memcpy(&sensor_payload.sensor_float[SENSOR3_OLD_START], &sensor_payload.sensor_float[SENSOR3_START], SENSOR3_BUF_LEN*4);
+    #ifdef KICKSAT_DEBUG
+    SerialUSB.println("Sensor Data 2:");
+    for (int k = 0; k < SENSOR_LEN_FLOAT; ++k) {
+      SerialUSB.println(sensor_payload.sensor_float[k]);
+    }
+    #endif
     kSensor.operate("xtb3", &sensor_payload.sensor_float[SENSOR3_START], SenMode);
+
+    #ifdef KICKSAT_DEBUG
+    SerialUSB.println("Sensor Data 3:");
+    for (int k = 0; k < SENSOR_LEN_FLOAT; ++k) {
+      SerialUSB.println(sensor_payload.sensor_float[k]);
+    }
+    #endif
     
     //Format beacon packet
     for (int k = 0; k < TX_MESSAGE_SIZE; ++k) {
@@ -188,6 +219,10 @@ void main_loop() {
     txLen += sensor_base64_len;
     txMessage[txLen] = '}'; 
     ++txLen;
+
+    #ifdef KICKSAT_DEBUG
+    SerialUSB.println(txLen);
+    #endif
     
     txLen = ax25encode(txMessage, txLen);
 
