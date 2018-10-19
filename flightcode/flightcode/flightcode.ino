@@ -180,7 +180,7 @@ void main_loop() {
     #ifdef KICKSAT_DEBUG
     SerialUSB.println("Sensor Data:");
     for (int k = 0; k < SENSOR_LEN_FLOAT; ++k) {
-      SerialUSB.println(sensor_payload.sensor_float[k]);
+      SerialUSB.println(sensor_payload.sensor_float[k], 8);
     }
     #endif
     kSensor.operate("xtb1", &sensor_payload.sensor_float[SENSOR1_START], SenMode);
@@ -194,7 +194,7 @@ void main_loop() {
     #ifdef KICKSAT_DEBUG
     SerialUSB.println("Sensor Data 2:");
     for (int k = 0; k < SENSOR_LEN_FLOAT; ++k) {
-      SerialUSB.println(sensor_payload.sensor_float[k]);
+      SerialUSB.println(sensor_payload.sensor_float[k],8);
     }
     #endif
     kSensor.operate("xtb3", &sensor_payload.sensor_float[SENSOR3_START], SenMode);
@@ -202,7 +202,7 @@ void main_loop() {
     #ifdef KICKSAT_DEBUG
     SerialUSB.println("Sensor Data 3:");
     for (int k = 0; k < SENSOR_LEN_FLOAT; ++k) {
-      SerialUSB.println(sensor_payload.sensor_float[k]);
+      SerialUSB.println(sensor_payload.sensor_float[k],8);
     }
     #endif
     
